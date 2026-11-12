@@ -14,29 +14,9 @@ I²C bus 1 is GPIO2 SDA and GPIO3 SCL. `i2cdetect -y 1` shows `0x18` and `0x29`.
 | Adafruit LIS3DH | I²C `0x18` | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3, CS → 3Vo |
 | Pololu VL53L7CX | I²C `0x29` | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3 |
 
-## Connect
-
-The Pi's USB port shows up on this PC as a link-local Ethernet adapter (`169.254.x.x`). That interface has no internet. `hostname -I` on the Pi prints the address to use. When this was written it was `169.254.239.255/16`.
-
-SSH on this PC:
-
-```
-Host pi
-    HostName raspberrypi.local
-    User jPi0
-    IdentityFile ~/.ssh/connect-to-pi
-```
-
-```bash
-ssh pi
-cd ~/Documents/SafeSight
-```
-
-If `raspberrypi.local` does not resolve: `ssh -i ~/.ssh/connect-to-pi jPi0@169.254.239.255`.
-
 ## Debug stream
 
-Mosquitto on the Pi listens on `0.0.0.0:1883` and allows anonymous clients. The config is `pi/mosquitto-safesight.conf`. Payloads are JSON, QoS 0.
+The Pi can be connected over Ethernet (or ethernet over USB). Then, Mosquitto on the Pi listens on `0.0.0.0:1883` and allows anonymous clients. The config is `pi/mosquitto-safesight.conf`. Payloads are JSON, QoS 0.
 
 | Topic | Payload |
 | --- | --- |
@@ -57,7 +37,7 @@ On this PC:
 
 ```bash
 cd pc
-.venv\Scripts\python visualize_sensors.py --broker 169.254.239.255
+.venv\Scripts\python visualize_sensors.py --broker raspberrypi.local
 ```
 
 Create that environment with `python -m venv .venv` and `.venv\Scripts\pip install -r requirements.txt`.
@@ -100,7 +80,7 @@ scp pi\models\* pi:Documents/SafeSight/models/
 
 ## Dependencies
 
-The Pi venv needs `paho-mqtt`, `smbus2` (`pi/requirements.txt`), and the pure-Python [VL53L5CX driver](https://github.com/Abstract-Horizon/vl53l5cx_python). ST's VL53L7CX uses that driver. Install on a machine with internet, then copy the result to the Pi. The USB link cannot reach PyPI.
+The Pi venv needs `paho-mqtt`, `smbus2` (`pi/requirements.txt`), and the pure-Python [VL53L5CX driver](https://github.com/Abstract-Horizon/vl53l5cx_python). ST's VL53L7CX uses that driver. Install on a machine with internet, then copy the result to the Pi if the Pi does not have internet.
 
 ```bash
 python3 -m venv venv
