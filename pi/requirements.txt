@@ -1,0 +1,18 @@
+# Pi publisher. Python 3.9 on Raspberry Pi OS Bullseye.
+#
+# The VL53L7CX driver is not on PyPI. ST's VL53L7CX is driver-compatible
+# with the VL53L5CX, so install this pure-Python port of the ST ultra-lite
+# driver (it talks I2C through smbus2, no C build):
+#
+#   pip install "vl53l5cx @ git+https://github.com/Abstract-Horizon/vl53l5cx_python.git"
+#
+# The USB-Ethernet link on this Pi has no route to the internet. Copy the
+# wheels and that git checkout from a machine that does, then:
+#
+#   pip install --no-index --find-links /path/to/wheels -r requirements.txt
+#   pip install --no-deps /path/to/vl53l5cx_python
+#
+# See the project README for the exact commands.
+
+paho-mqtt>=2.1.0,<3
+smbus2>=0.4.3

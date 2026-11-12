@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments (pc/.venv on this PC, venv on the Pi)
+.venv/
+venv/
+
+# Publisher log when a background run is copied back
+publish.log
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
