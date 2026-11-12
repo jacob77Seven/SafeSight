@@ -1,38 +1,24 @@
 # SafeSight
 
-Debug setup for a headless Raspberry Pi Zero 2W that reads an accelerometer and a multizone time-of-flight sensor, then streams the samples to this PC.
+Wearable obstacle warning on a headless Raspberry Pi Zero 2W. An LIS3DH and a VL53L7CX share I²C. A PCM5102 plays a short spatialized tone when something is closing on the walking line. The same samples can be streamed to this PC over MQTT for debugging.
 
-The Pi has no display. This PC reaches it over USB Ethernet and plots the live data. Nothing here is a production path: the broker allows anonymous clients, and the link is only the USB cable between the two machines.
+`pi/` runs on the Pi. `pc/` is the live plot and the gait-training notebook. Sensor geometry, gait, audio, and the debug topics are in [pc/PIPELINE.md](pc/PIPELINE.md).
 
-## What is connected
+## Hardware
 
-| Piece | Role |
-| --- | --- |
-| Raspberry Pi Zero 2W | Reads the sensors and runs the Mosquitto broker |
-| Adafruit LIS3DH | 3-axis accelerometer on I²C `0x18` |
-| Pololu VL53L7CX | 8×8 time-of-flight sensor on I²C `0x29` |
-| GY-PCM5102A | I²S DAC, not part of the MQTT stream |
-| This PC | SSH host and the live plot |
+I²C bus 1 is GPIO2 SDA and GPIO3 SCL. `i2cdetect -y 1` shows `0x18` and `0x29`. The DAC overlay is `dtoverlay=hifiberry-dac`.
 
-Both sensors share I²C bus 1 (GPIO2 SDA, GPIO3 SCL). `i2cdetect -y 1` shows `0x18` and `0x29`.
-
-### Wiring
-
-| Device | Interface | Pi connection |
+| Device | Interface | Connection |
 | --- | --- | --- |
-| GY-PCM5102A DAC | I²S | VIN → 5 V, GND → GND, SCK → GND, BCK → GPIO18, LCK → GPIO19, DIN → GPIO21 |
-| Adafruit LIS3DH | I²C | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3, CS → 3Vo (I²C mode) |
-| Pololu VL53L7CX | I²C | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3 |
+| GY-PCM5102A | I²S | VIN → 5 V, GND → GND, SCK → GND, BCK → GPIO18, LCK → GPIO19, DIN → GPIO21 |
+| Adafruit LIS3DH | I²C `0x18` | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3, CS → 3Vo |
+| Pololu VL53L7CX | I²C `0x29` | VIN → 3.3 V, GND → GND, SDA → GPIO2, SCL → GPIO3 |
 
-The DAC overlay is `dtoverlay=hifiberry-dac`.
+## Connect
 
-## Network and SSH
+The Pi's USB port shows up on this PC as a link-local Ethernet adapter (`169.254.x.x`). That interface has no internet. `hostname -I` on the Pi prints the address to use. When this was written it was `169.254.239.255/16`.
 
-The Pi's USB port enumerates on this PC as an Ethernet adapter. There is no DHCP and no route to the internet on that interface. Both sides use a link-local address (`169.254.x.x`).
-
-The Pi's address on `usb0` right now is **169.254.239.255/16**. It can change. On the Pi, `hostname -I` prints the address the visualizer should use. The publisher prints it when it starts and when it stops.
-
-SSH is already set up in `~/.ssh/config` on this PC:
+SSH on this PC:
 
 ```
 Host pi
@@ -41,81 +27,80 @@ Host pi
     IdentityFile ~/.ssh/connect-to-pi
 ```
 
-Connect and open the project directory:
-
 ```bash
 ssh pi
 cd ~/Documents/SafeSight
 ```
 
-If `raspberrypi.local` does not resolve, use the link-local address:
+If `raspberrypi.local` does not resolve: `ssh -i ~/.ssh/connect-to-pi jPi0@169.254.239.255`.
+
+## Debug stream
+
+Mosquitto on the Pi listens on `0.0.0.0:1883` and allows anonymous clients. The config is `pi/mosquitto-safesight.conf`. Payloads are JSON, QoS 0.
+
+| Topic | Payload |
+| --- | --- |
+| `sensors/imu` | `ts`, `x`, `y`, `z` (m/s²), `fake` |
+| `sensors/tof` | `ts`, `resolution` (`8x8` or `4x4`), `distances` (mm), `status`, `silicon_temp_c`, `fake` |
+
+`distances` is row-major. Zone 0 is the bottom-left cell. Status 5 and 9 are valid ranges. `fake: true` means that stream is synthetic.
+
+On the Pi, from `~/Documents/SafeSight`:
 
 ```bash
-ssh -i ~/.ssh/connect-to-pi jPi0@169.254.239.255
-```
-
-The login user is `jPi0`. The `pi` name is only the SSH host alias. The Pi project directory is `~/Documents/SafeSight`. This repo is the copy on the PC. `pi/` is what runs on the Pi, and `pc/` is the visualizer.
-
-The USB link cannot resolve `raspbian.raspberrypi.org` or PyPI. Package installs on the Pi were done by copying debs and wheels from this PC. There is also no NTP, so the clock does not survive a reboot. `ts` in the MQTT payloads is the Pi's clock.
-
-## MQTT debug stream
-
-Mosquitto runs on the Pi as `mosquitto.service` and listens on `0.0.0.0:1883` with anonymous access. The config on the Pi is `/etc/mosquitto/conf.d/safesight.conf` (same text as `pi/mosquitto-safesight.conf`). Leave that config on this USB link only.
-
-The publisher sends JSON, QoS 0:
-
-| Stream | Topic | Payload |
-| --- | --- | --- |
-| LIS3DH | `sensors/imu` | `ts` (Unix seconds), `x`, `y`, `z` in m/s², `fake` |
-| VL53L7CX | `sensors/tof` | `ts`, `resolution` (`8x8` or `4x4`), `distances` (mm), `status`, `silicon_temp_c`, `fake` |
-
-Zone 0 is the bottom-left zone in ST's numbering. `distances` is row-major, row 0 along the bottom. Status 5 and 9 are valid ranges. `fake: true` means that stream is synthetic because the sensor or its library did not start.
-
-### Start the publisher on the Pi
-
-```bash
-ssh pi
-cd ~/Documents/SafeSight
 ./venv/bin/python publish_sensors.py
 ```
 
-Flags: `--imu-hz 50`, `--tof-resolution 8`, `--tof-hz 15`, `--fake`, `--duration 20`, `--no-fallback`. A foreground run is the easiest way to watch the log. To leave it running:
+Leave it running with `nohup ./venv/bin/python publish_sensors.py > publish.log 2>&1 &`. Ctrl+C stops a foreground run. Defaults are 50 Hz IMU and 15 Hz ToF at 8×8. The two sensors share the bus, so measured rates are lower. `--fake` skips the hardware. `--no-fallback` exits if a sensor fails to open.
 
-```bash
-nohup ./venv/bin/python publish_sensors.py > publish.log 2>&1 &
-```
-
-Ctrl+C stops a foreground run. The IMU target is 50 Hz. Sharing the bus with the ToF usually lands near 40 Hz. The ToF tops out at 15 Hz in 8×8 and 60 Hz in 4×4. Firmware upload on ToF init takes about 15 seconds at the Pi's 100 kHz I²C clock.
-
-### Run the visualizer on this PC
-
-A virtualenv in `pc/.venv` already has the dependencies. From this repo:
+On this PC:
 
 ```bash
 cd pc
 .venv\Scripts\python visualize_sensors.py --broker 169.254.239.255
 ```
 
-To recreate that environment:
+Create that environment with `python -m venv .venv` and `.venv\Scripts\pip install -r requirements.txt`.
+
+Stop the publisher before the scripts below. It holds I²C.
+
+## Obstacle warning
+
+Collect on the Pi. Ctrl+C ends the session and closes the JSONL. `--duration 120` stops after 120 seconds.
 
 ```bash
-cd pc
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python visualize_sensors.py --broker 169.254.239.255
+./venv/bin/python collect_data.py --mqtt
+echo walking >> data/session_<time>.ctl
+echo still >> data/session_<time>.ctl
 ```
 
-`--broker` overrides `DEFAULT_BROKER` at the top of `pc/visualize_sensors.py`. The window shows a scrolling x/y/z plot, a distance heatmap, the same distances as a text grid, and a status line with the MQTT connection, the payload timestamp, and the measured rate. Parentheses in the grid are zones whose status is not 5 or 9.
+The log prints the real control-file path. `obstacle`, `step-down`, and `arm-wave` are stored too. Training uses `walking` and `still`. Window on `mono`. The Pi has no NTP, so `ts` can be wrong after a reboot.
 
-### Libraries
+Copy the file the log named, then train:
 
-`pi/requirements.txt` is `paho-mqtt` and `smbus2`. `pi/lis3dh.py` reads the accelerometer directly. The scale matches Adafruit's LIS3DH high-resolution mode. Adafruit Blinka is not installed. The USB link cannot reach PyPI, and Blinka is a large stack for the same register reads.
+```powershell
+scp pi:Documents/SafeSight/data/session_YYYYMMDD_HHMMSS.jsonl data\
+```
 
-The VL53L7CX uses a pure-Python port of ST's VL53L5CX ultra-lite driver, which does not need a compiler:
+Open `pc/train_gait.ipynb`, set `PATHS` to the JSONL files, and run all cells. The Pi loads `pi/models/gait_logreg.json`. The feature vector is `pi/models/INPUTS.md`. An empty `PATHS` overwrites that JSON with a demo fit.
 
-https://github.com/Abstract-Horizon/vl53l5cx_python
+Copy the code and the model back, then run:
 
-ST documents the VL53L7CX as driver-compatible with the VL53L5CX. The port is not on PyPI. On a machine that has internet:
+```powershell
+ssh pi "mkdir -p Documents/SafeSight/models"
+scp pi\*.py pi:Documents/SafeSight/
+scp pi\models\* pi:Documents/SafeSight/models/
+```
+
+```bash
+./venv/bin/python runtime.py --mqtt-raw --mqtt-debug --mqtt-audio
+```
+
+`pi/selftest.py` checks the geometry on synthetic frames.
+
+## Dependencies
+
+The Pi venv needs `paho-mqtt`, `smbus2` (`pi/requirements.txt`), and the pure-Python [VL53L5CX driver](https://github.com/Abstract-Horizon/vl53l5cx_python). ST's VL53L7CX uses that driver. Install on a machine with internet, then copy the result to the Pi. The USB link cannot reach PyPI.
 
 ```bash
 python3 -m venv venv
@@ -123,4 +108,4 @@ python3 -m venv venv
 ./venv/bin/pip install "vl53l5cx @ git+https://github.com/Abstract-Horizon/vl53l5cx_python.git"
 ```
 
-On this Pi the venv was installed from wheels and a checkout copied from the PC. The first publisher run patches two bugs in that port (range-sigma buffer size, and disabled result headers left set). If a sensor still fails, the log says so and that stream switches to fake data unless you pass `--no-fallback`.
+`pc/requirements.txt` is the visualizer and the notebook.

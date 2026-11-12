@@ -14,5 +14,11 @@
 #
 # See the project README for the exact commands.
 
+# collect_data.py and runtime.py use only this list, the VL53 driver, and
+# the Python standard library. Audio is `aplay` (already on the Pi) or
+# sounddevice if it happens to be installed. Do not add numpy or
+# scikit-learn here: the USB link cannot reach PyPI, and gait inference
+# is a dot product in gait.py.
+
 paho-mqtt>=2.1.0,<3
 smbus2>=0.4.3

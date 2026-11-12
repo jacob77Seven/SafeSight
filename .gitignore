@@ -13,6 +13,13 @@ venv/
 # Publisher log when a background run is copied back
 publish.log
 
+# collect_data.py / runtime.py session logs, and label side-channels
+data/
+*.ctl
+
+# The notebook can also dump a sklearn joblib. The Pi loads the JSON.
+*.joblib
+
 # OS / editor
 Thumbs.db
 Desktop.ini

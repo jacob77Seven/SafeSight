@@ -5,3 +5,7 @@ paho-mqtt>=2.1.0,<3
 pyqtgraph>=0.13.7
 PySide6>=6.6
 numpy>=1.26
+
+# train_gait.ipynb only. The Pi does not install these.
+scikit-learn>=1.4
+matplotlib>=3.8
